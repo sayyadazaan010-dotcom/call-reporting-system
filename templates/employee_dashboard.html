@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Add New Call Report{% endblock %}
+{% block heading %}Add New Call Report{% endblock %}
+{% block subheading %}Fill the details below to submit a new call report.{% endblock %}
+
+{% block content %}
+<div style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="stat-card" style="flex:1; min-width:180px;">
+    <div class="stat-label">📄 Total Reports</div>
+    <div class="stat-number">{{ total_reports }}</div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:180px;">
+    <div class="stat-label">⏳ Pending</div>
+    <div class="stat-number" style="color: var(--neon-orange);">{{ pending_reports }}</div>
+  </div>
+</div>
+
+<div class="panel" style="padding: 28px;">
+  <form method="POST" action="{{ url_for('new_report') }}" id="reportForm">
+
+    <div style="margin-bottom: 22px;">
+      <label class="field-label">Day Type</label>
+      <div class="toggle-group" id="dayTypeGroup">
+        <div class="toggle-option active" data-value="Visit" onclick="setDayType(this,'Visit')">🧑‍🔧 Working Day</div>
+        <div class="toggle-option" data-value="Holiday" onclick="setDayType(this,'Holiday')" style="color: var(--neon-cyan);">🌴 Holiday</div>
+        <div class="toggle-option" data-value="Leave" onclick="setDayType(this,'Leave')" style="color: var(--neon-orange);">📋 Leave</div>
+      </div>
+      <input type="hidden" id="entryTypeInput" name="entry_type" value="Visit">
+      <div id="sundayNote" style="display:none; margin-top:8px; font-size:0.82rem; color: var(--neon-cyan);">
+        📅 This date is a Sunday — auto-marked as Holiday. Change above if you actually worked or are on leave.
+      </div>
+    </div>
+
+    <div id="leaveTypeBlock" style="display:none; margin-bottom: 22px;">
+      <label class="field-label">Leave Type</label>
+      <select class="field-input" id="leaveTypeInput" name="leave_type">
+        {% for lt in leave_types %}
+          <option value="{{ lt }}">{{ lt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div id="holidayLeaveMsg" style="display:none; margin-bottom: 22px; padding:14px; border-radius:10px; background: rgba(59,130,246,0.08); border:1px solid var(--border-glow); font-size:0.88rem; color: var(--text-dim);">
+      No call report fields are needed for this date — it will simply be marked in your reports.
+    </div>
+
+    <div class="form-grid" id="normalFieldsGrid">
+      <div>
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="report_date" id="reportDateInput" value="{{ today }}" required>
+      </div>
+      <div class="normal-field">
+        <label class="field-label">User Name</label>
+        <input class="field-input" type="text" name="customer_name" id="customerNameInput" placeholder="Enter user name" required autocomplete="off">
+      </div>
+      <div class="normal-field">
+        <label class="field-label">Location</label>
+        <input class="field-input" list="locationOptions" name="location" id="locationInputField" placeholder="Select or type a location" required autocomplete="off">
+        <datalist id="locationOptions">
+          {% for loc in locations %}
+            <option value="{{ loc }}">
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="normal-field">
+        <label class="field-label">Department</label>
+        <input class="field-input" list="departmentOptions" name="department" id="departmentInput" placeholder="Select or type a department" required autocomplete="off">
+        <datalist id="departmentOptions">
+          {% for dep in departments %}
+            <option value="{{ dep }}">
+          {% endfor %}
+        </datalist>
+      </div>
+      <div class="normal-field">
+        <label class="field-label">Mode</label>
+        <div class="toggle-group" data-toggle-group data-target="#modeInput">
+          <div class="toggle-option active" data-value="Remote">📶 Remote</div>
+          <div class="toggle-option" data-value="Visit">🧑‍🔧 Visit</div>
+        </div>
+        <input type="hidden" id="modeInput" name="mode" value="Remote">
+      </div>
+    </div>
+
+    <div class="normal-field" style="margin-top: 22px;">
+      <label class="field-label">Status</label>
+      <div class="toggle-group">
+        <div class="toggle-option active status-pending" data-value="Pending" onclick="setStatus(this,'Pending')">⏳ Pending</div>
+        <div class="toggle-option status-completed" data-value="Completed" onclick="setStatus(this,'Completed')">✅ Completed</div>
+      </div>
+      <input type="hidden" id="statusInput" name="status" value="Pending">
+    </div>
+
+    <div class="normal-field" style="margin-top: 22px;">
+      <label class="field-label">Issue / Description</label>
+      <textarea class="field-input" name="issue" id="issueInput" rows="4" placeholder="Enter issue details..." required></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 26px; font-size:1rem;">
+      🚀 SUBMIT REPORT
+    </button>
+  </form>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export My Reports</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;" onchange="toggleCustomRange()">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+        <option value="custom">Custom (From–To)</option>
+      </select>
+    </div>
+    <div id="expRefDateWrap">
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate" value="{{ today }}">
+    </div>
+    <div id="expFromWrap" style="display:none;">
+      <label class="field-label">From date</label>
+      <input class="field-input" type="date" id="expFrom">
+    </div>
+    <div id="expToWrap" style="display:none;">
+      <label class="field-label">To date</label>
+      <input class="field-input" type="date" id="expTo">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function setStatus(el, val) {
+    document.querySelectorAll('.status-pending, .status-completed').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('statusInput').value = val;
+  }
+  function toggleCustomRange() {
+    const isCustom = document.getElementById('expRange').value === 'custom';
+    document.getElementById('expRefDateWrap').style.display = isCustom ? 'none' : '';
+    document.getElementById('expFromWrap').style.display = isCustom ? '' : 'none';
+    document.getElementById('expToWrap').style.display = isCustom ? '' : 'none';
+  }
+  function doExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const today = new Date().toISOString().slice(0,10);
+    if (range === 'custom') {
+      const from = document.getElementById('expFrom').value || today;
+      const to = document.getElementById('expTo').value || today;
+      window.location.href = `/export/custom/${fmt}?from=${from}&to=${to}&date=${from}`;
+      return;
+    }
+    const dt = document.getElementById('expDate').value || today;
+    window.location.href = `/export/${range}/${fmt}?date=${dt}`;
+  }
+
+  // ---- Day Type: Working Day / Holiday / Leave ----
+  let userSetDayType = false; // becomes true once the user manually taps a Day Type option
+
+  function setDayType(el, val, isAuto) {
+    document.querySelectorAll('#dayTypeGroup .toggle-option').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('entryTypeInput').value = val;
+    if (!isAuto) userSetDayType = true;
+
+    const isNormal = (val === 'Visit');
+    document.getElementById('leaveTypeBlock').style.display = (val === 'Leave') ? 'block' : 'none';
+    document.getElementById('holidayLeaveMsg').style.display = isNormal ? 'none' : 'block';
+
+    document.querySelectorAll('.normal-field').forEach(f => {
+      f.style.display = isNormal ? 'block' : 'none';
+      f.querySelectorAll('input, select, textarea').forEach(inp => {
+        if (isNormal) {
+          if (inp.dataset.wasRequired === '1') inp.required = true;
+        } else {
+          if (inp.required) inp.dataset.wasRequired = '1';
+          inp.required = false;
+        }
+      });
+    });
+  }
+
+  function checkSundayAutoHoliday() {
+    const dateVal = document.getElementById('reportDateInput').value;
+    if (!dateVal) return;
+    const d = new Date(dateVal + 'T00:00:00');
+    const isSunday = d.getDay() === 0;
+    document.getElementById('sundayNote').style.display = isSunday ? 'block' : 'none';
+
+    if (!userSetDayType) {
+      if (isSunday) {
+        const holidayOpt = document.querySelector('#dayTypeGroup [data-value="Holiday"]');
+        setDayType(holidayOpt, 'Holiday', true);
+      } else {
+        const workingOpt = document.querySelector('#dayTypeGroup [data-value="Visit"]');
+        setDayType(workingOpt, 'Visit', true);
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    checkSundayAutoHoliday();
+    document.getElementById('reportDateInput').addEventListener('change', function () {
+      userSetDayType = false; // re-evaluate Sunday auto-detect for the newly picked date
+      checkSundayAutoHoliday();
+    });
+  });
+</script>
+{% endblock %}

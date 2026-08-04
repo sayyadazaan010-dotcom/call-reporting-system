@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}All Reports{% endblock %}
+{% block heading %}All Reports{% endblock %}
+{% block subheading %}Every call report submitted across all employees. Admins can fix a wrong date or entry using Edit.{% endblock %}
+
+{% block content %}
+<div class="panel" style="padding: 20px; overflow-x:auto;">
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th>Employee</th><th>User Name</th><th>Location</th><th>Department</th><th>Mode</th><th>Status</th><th>Issue</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for r in reports %}
+      <tr>
+        <td>{{ r.report_date | fmt_date }}</td>
+        <td>{{ r.employee_name or '-' }}</td>
+        {% if r.entry_type == 'Holiday' %}
+        <td colspan="6" style="color: var(--neon-cyan); font-weight:600;">🌴 HOLIDAY — Weekly Holiday / Non-working day</td>
+        {% elif r.entry_type == 'Leave' %}
+        <td colspan="6" style="color: var(--neon-orange); font-weight:600;">📋 ON LEAVE — {{ r.leave_type or 'Leave' }}</td>
+        {% else %}
+        <td>{{ r.customer_name or '-' }}</td>
+        <td>{{ r.location }}</td>
+        <td>{{ r.department }}</td>
+        <td>{{ r.mode }}</td>
+        <td><span class="badge {{ 'pending' if r.status=='Pending' else 'completed' }}">{{ r.status }}</span></td>
+        <td>{{ r.issue }}</td>
+        {% endif %}
+        <td style="white-space:nowrap;">
+          <button class="btn btn-outline btn-sm"
+            onclick='openEditReportModal({{ r.id }}, {{ r.report_date | tojson }}, {{ (r.customer_name or '') | tojson }}, {{ (r.location or '') | tojson }}, {{ (r.department or '') | tojson }}, {{ (r.mode or '') | tojson }}, {{ (r.status or '') | tojson }}, {{ (r.issue or '') | tojson }})'>
+            ✏️ Edit
+          </button>
+          <form method="POST" action="{{ url_for('delete_own_report', report_id=r.id) }}"
+                style="display:inline;" onsubmit="return confirm('Delete this report?');">
+            <button type="submit" class="btn btn-danger btn-sm">🗑 Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="text-align:center; color:var(--text-dim); padding:24px;">No reports yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+
+
+<!-- Edit Report Modal -->
+<div class="modal-overlay" id="editReportModal">
+  <div class="panel modal-box" style="display:flex; flex-direction:column; max-height:88vh; padding:16px;">
+    <div class="modal-header-row" style="flex-shrink:0;">
+      <div style="font-weight:700; font-size:1.05rem;">✏️ Edit Call Report</div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('editReportModal')">✕ Close</button>
+    </div>
+    <form method="POST" id="editReportForm" style="display:flex; flex-direction:column; flex:1; min-height:0;">
+      <div class="modal-actions" style="flex-shrink:0; margin:0 0 12px 0; padding:0; position:static;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">💾 Save Changes</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('editReportModal')">Cancel</button>
+      </div>
+      <div style="overflow-y:auto; flex:1; min-height:0; padding-right:4px;">
+        <div style="margin-bottom:10px;">
+          <label class="field-label">Date</label>
+          <input class="field-input" type="date" name="report_date" id="editReportDate" required>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="field-label">User Name</label>
+          <input class="field-input" type="text" name="customer_name" id="editCustomerName" required autocomplete="off">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="field-label">Location</label>
+          <input class="field-input" list="editLocationOptions" name="location" id="editLocation" required autocomplete="off">
+          <datalist id="editLocationOptions">
+            {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+          </datalist>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="field-label">Department</label>
+          <input class="field-input" list="editDepartmentOptions" name="department" id="editDepartment" required autocomplete="off">
+          <datalist id="editDepartmentOptions">
+            {% for dep in departments %}<option value="{{ dep }}">{% endfor %}
+          </datalist>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="field-label">Mode</label>
+          <select class="field-input" name="mode" id="editMode">
+            <option value="Remote">Remote</option>
+            <option value="Visit">Visit</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="field-label">Status</label>
+          <select class="field-input" name="status" id="editStatus">
+            <option value="Pending">Pending</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="field-label">Issue / Description</label>
+          <textarea class="field-input" name="issue" id="editIssue" rows="2" required></textarea>
+        </div>
+      </div>
+      <div class="modal-actions" style="flex-shrink:0; margin:10px 0 0 0; padding:10px 0 0; position:static; border-top:1px solid rgba(59,130,246,0.25);">
+        <button type="submit" class="btn btn-primary" style="flex:1;">💾 Save Changes</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('editReportModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;" onchange="toggleCustomRange()">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+        <option value="custom">Custom (From–To)</option>
+      </select>
+    </div>
+    <div id="expRefDateWrap">
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate">
+    </div>
+    <div id="expFromWrap" style="display:none;">
+      <label class="field-label">From date</label>
+      <input class="field-input" type="date" id="expFrom">
+    </div>
+    <div id="expToWrap" style="display:none;">
+      <label class="field-label">To date</label>
+      <input class="field-input" type="date" id="expTo">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function openEditReportModal(id, reportDate, customerName, location, department, mode, status, issue) {
+    document.getElementById('editReportForm').action = `/admin/reports/${id}/edit`;
+    document.getElementById('editReportDate').value = reportDate;
+    document.getElementById('editCustomerName').value = customerName;
+    document.getElementById('editLocation').value = location;
+    document.getElementById('editDepartment').value = department;
+    document.getElementById('editMode').value = mode;
+    document.getElementById('editStatus').value = status;
+    document.getElementById('editIssue').value = issue;
+    openModal('editReportModal');
+  }
+</script>
+
+<script>
+  function toggleCustomRange() {
+    const isCustom = document.getElementById('expRange').value === 'custom';
+    document.getElementById('expRefDateWrap').style.display = isCustom ? 'none' : '';
+    document.getElementById('expFromWrap').style.display = isCustom ? '' : 'none';
+    document.getElementById('expToWrap').style.display = isCustom ? '' : 'none';
+  }
+  function doModuleExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const today = new Date().toISOString().slice(0,10);
+    if (range === 'custom') {
+      const from = document.getElementById('expFrom').value || today;
+      const to = document.getElementById('expTo').value || today;
+      window.location.href = `/export/custom/${fmt}?from=${from}&to=${to}&date=${from}&scope=all`;
+      return;
+    }
+    const dtField = document.getElementById('expDate').value;
+    const dt = dtField || today;
+    window.location.href = `/export/${range}/${fmt}?date=${dt}&scope=all`;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const d = document.getElementById('expDate');
+    if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  });
+</script>
+
+{% endblock %}

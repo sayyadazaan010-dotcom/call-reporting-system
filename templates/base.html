@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>{% block title %}Call Reporting System{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block extra_css %}{% endblock %}
+</head>
+<body>
+  <div class="bg-fx"></div>
+  <div class="glow-line"></div>
+
+  <div class="mobile-topbar">
+    <button type="button" class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+    <div class="mobile-brand">📞 CALL <span class="brand-accent">REPORTING</span></div>
+    <div class="mobile-user">{{ (user.full_name or '?')[0] | upper }}</div>
+  </div>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand" style="margin-bottom: 28px;">
+        <span>📞</span> CALL <span class="brand-accent">REPORTING</span>
+      </div>
+      <nav>
+        {% if user.role == 'admin' %}
+          <a href="{{ url_for('admin_dashboard') }}" class="nav-item {{ 'active' if active_page=='admin_dashboard' }}">🏠 Dashboard</a>
+          <a href="{{ url_for('admin_reports') }}" class="nav-item {{ 'active' if active_page=='admin_reports' }}">📄 All Reports</a>
+          <a href="{{ url_for('admin_petrol_expenses') }}" class="nav-item {{ 'active' if active_page=='admin_petrol_expenses' }}">⛽ Petrol Expenses</a>
+          <a href="{{ url_for('admin_toner') }}" class="nav-item {{ 'active' if active_page=='admin_toner' }}">🖨️ Toner Management</a>
+          <a href="{{ url_for('toner_requirement') }}" class="nav-item {{ 'active' if active_page=='toner_requirement' }}">📨 Toner Requirement</a>
+          <a href="{{ url_for('admin_cctv') }}" class="nav-item {{ 'active' if active_page=='admin_cctv' }}">📹 CCTV Register</a>
+          <a href="{{ url_for('admin_visitor') }}" class="nav-item {{ 'active' if active_page=='admin_visitor' }}">🧍 Visitor Register</a>
+          <a href="{{ url_for('change_password') }}" class="nav-item {{ 'active' if active_page=='change_password' }}">⚙️ Settings</a>
+        {% else %}
+          <a href="{{ url_for('new_report') }}" class="nav-item {{ 'active' if active_page=='new_report' }}">➕ New Report</a>
+          <a href="{{ url_for('my_reports') }}" class="nav-item {{ 'active' if active_page=='my_reports' }}">📄 My Reports</a>
+          <a href="{{ url_for('petrol_expenses') }}" class="nav-item {{ 'active' if active_page=='petrol_expenses' }}">⛽ Petrol Expenses</a>
+          <a href="{{ url_for('toner_management') }}" class="nav-item {{ 'active' if active_page=='toner_management' }}">🖨️ Toner Management</a>
+          <a href="{{ url_for('toner_requirement') }}" class="nav-item {{ 'active' if active_page=='toner_requirement' }}">📨 Toner Requirement</a>
+          <a href="{{ url_for('cctv_register') }}" class="nav-item {{ 'active' if active_page=='cctv_register' }}">📹 CCTV Register</a>
+          <a href="{{ url_for('visitor_register') }}" class="nav-item {{ 'active' if active_page=='visitor_register' }}">🧍 Visitor Register</a>
+          <a href="{{ url_for('change_password') }}" class="nav-item {{ 'active' if active_page=='change_password' }}">⚙️ Settings</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}" class="nav-item">➜ Logout</a>
+      </nav>
+    </aside>
+
+    <main class="main-area">
+      <div class="topbar">
+        <div>
+          <div style="font-size:1.25rem; font-weight:800;">{% block heading %}{% endblock %}</div>
+          <div style="color: var(--text-dim); font-size: 0.82rem;">{% block subheading %}{% endblock %}</div>
+        </div>
+        <div class="profile-chip desktop-only">
+          <div style="text-align:right;">
+            <div style="font-weight:700;">{{ user.full_name }}</div>
+            <div style="color: var(--text-dim); font-size: 0.78rem;">
+              {% if user.role == 'admin' %}Administrator{% elif user.role == 'toner_req' %}Toner Requirement{% else %}Employee{% endif %}
+            </div>
+          </div>
+          {% if user.photo_filename %}
+            <img src="{{ url_for('static', filename=user.photo_filename) }}" alt="profile">
+          {% else %}
+            <div class="avatar-initials">{{ (user.full_name or '?')[0] | upper }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="flash {{ 'error' if category == 'error' else 'success' }}">{{ msg }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  <script>
+    (function () {
+      var btn = document.getElementById('menuBtn');
+      var sidebar = document.getElementById('sidebar');
+      var backdrop = document.getElementById('sidebarBackdrop');
+      if (!btn || !sidebar) return;
+
+      function openMenu() {
+        sidebar.classList.add('open');
+        if (backdrop) backdrop.classList.add('show');
+        document.body.style.overflow = 'hidden';
+      }
+      function closeMenu() {
+        sidebar.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('show');
+        document.body.style.overflow = '';
+      }
+      function isOpen() {
+        return sidebar.classList.contains('open');
+      }
+
+      btn.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isOpen()) closeMenu(); else openMenu();
+        return false;
+      };
+
+      if (backdrop) {
+        backdrop.onclick = function (e) {
+          e.preventDefault();
+          closeMenu();
+          return false;
+        };
+      }
+
+      // Force navigation — Android often blocks normal <a> clicks inside transformed/fixed drawers
+      var links = sidebar.querySelectorAll('a.nav-item');
+      for (var i = 0; i < links.length; i++) {
+        (function (link) {
+          link.style.cursor = 'pointer';
+          link.style.pointerEvents = 'auto';
+          link.onclick = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var href = link.getAttribute('href');
+            closeMenu();
+            if (href) {
+              window.location.href = href;
+            }
+            return false;
+          };
+        })(links[i]);
+      }
+    })();
+  </script>
+  </script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

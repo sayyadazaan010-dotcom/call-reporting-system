@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Toner Requirement{% endblock %}
+{% block heading %}Toner Requirement{% endblock %}
+{% block subheading %}Submit cartridge needs. All employees & admin see requests; open ones popup in Toner Management.{% endblock %}
+
+{% block content %}
+<div class="panel" style="padding: 28px;">
+  <form method="POST" action="{{ url_for('toner_requirement') }}">
+    <div class="form-grid">
+      <div>
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="entry_date" value="{{ today }}" required>
+      </div>
+      <div>
+        <label class="field-label">User Name (submitted by)</label>
+        <input class="field-input" type="text" name="requester_name" placeholder="Your name" required autocomplete="off" value="{{ user.full_name or '' }}">
+      </div>
+      <div>
+        <label class="field-label">Needed By (jisko toner chahiye)</label>
+        <input class="field-input" type="text" name="needed_by" placeholder="Person who needs the toner" required autocomplete="off">
+      </div>
+      <div>
+        <label class="field-label">Department</label>
+        <input class="field-input" list="reqDepOptions" name="department" placeholder="Select or type department" required autocomplete="off">
+        <datalist id="reqDepOptions">
+          {% for dep in departments %}<option value="{{ dep }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Location</label>
+        <input class="field-input" list="reqLocationOptions" name="location" placeholder="Select or type location" required autocomplete="off">
+        <datalist id="reqLocationOptions">
+          {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Toner Type</label>
+        <select class="field-input" name="toner_type" id="reqTonerTypeSelect" onchange="toggleOtherToner(this,'reqTonerTypeOtherWrap')">
+          {% for t in toner_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div id="reqTonerTypeOtherWrap" style="display:none;">
+        <label class="field-label">Specify Toner Type</label>
+        <input class="field-input" type="text" name="toner_type_other" placeholder="e.g. 05A">
+      </div>
+      <div>
+        <label class="field-label">Quantity (kitni)</label>
+        <input class="field-input" type="number" name="quantity" min="1" value="1" required>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <label class="field-label">Remark</label>
+        <textarea class="field-input" name="remark" rows="3" placeholder="Optional note"></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 26px; font-size:1rem;">
+      📨 SUBMIT TONER REQUIREMENT
+    </button>
+  </form>
+</div>
+
+<div class="panel" style="padding: 20px; margin-top: 20px; overflow-x:auto;">
+  <div style="font-weight:700; margin-bottom: 14px;">📋 All Toner Requirements</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Date</th><th>Submitted By</th><th>Needed By</th><th>Dept</th><th>Location</th>
+        <th>Type</th><th>Qty</th><th>Remark</th><th>Status</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.entry_date | fmt_date }}</td>
+        <td>{{ e.requester_name or e.employee_name or '-' }}</td>
+        <td>{{ e.needed_by or '-' }}</td>
+        <td>{{ e.department or '-' }}</td>
+        <td>{{ e.location }}</td>
+        <td>{{ e.toner_type }}</td>
+        <td>{{ e.quantity or 1 }}</td>
+        <td>{{ e.remark or '-' }}</td>
+        <td>
+          {% if (e.status or 'open') == 'open' %}
+            <span class="badge pending">Open</span>
+          {% else %}
+            <span class="badge completed">Seen</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if e.user_id == user.id or user.role == 'admin' %}
+          <form method="POST" action="{{ url_for('delete_toner_requirement', entry_id=e.id) }}" onsubmit="return confirm('Delete this requirement?');">
+            <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+          </form>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" style="text-align:center; color:var(--text-dim); padding:24px;">No toner requirements yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function toggleOtherToner(sel, wrapId) {
+    document.getElementById(wrapId).style.display = (sel.value === 'Other') ? 'block' : 'none';
+  }
+</script>
+
+<script>
+  function doModuleExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const dtField = document.getElementById('expDate').value;
+    const dt = dtField || new Date().toISOString().slice(0,10);
+    window.location.href = `/toner-requirement/export/${range}/${fmt}?date=${dt}`;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const d = document.getElementById('expDate');
+    if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  });
+</script>
+
+{% endblock %}

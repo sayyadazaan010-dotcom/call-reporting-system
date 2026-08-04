@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toner Requirement</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  .portal-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px 60px;
+    position: relative;
+    z-index: 1;
+  }
+  .portal-card { width: min(540px, 100%); }
+  .portal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .portal-title { font-size: 1.35rem; font-weight: 800; }
+  .portal-title span { color: var(--neon-cyan); }
+  .portal-user { color: var(--text-dim); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <div class="bg-fx"></div>
+  <div class="glow-line"></div>
+
+  <div class="portal-wrap">
+    <div class="portal-card">
+      <div class="portal-header">
+        <div>
+          <div class="portal-title">📨 <span>Toner Requirement</span></div>
+          <div class="portal-user">Logged in as {{ user.full_name }} · {{ user.department or 'Department' }}</div>
+        </div>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline btn-sm">➜ Logout</a>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="flash {{ 'error' if category == 'error' else 'success' }}">{{ msg }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="panel" style="padding: 26px;">
+        <form method="POST" action="{{ url_for('toner_req_portal') }}">
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Date</label>
+            <input class="field-input" type="date" name="entry_date" value="{{ today }}" required>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">User Name (submitted by)</label>
+            <input class="field-input" type="text" name="requester_name" placeholder="Enter name" required autocomplete="off" value="{{ user.full_name or '' }}">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Needed By (jisko toner chahiye)</label>
+            <input class="field-input" type="text" name="needed_by" placeholder="Person who needs the toner" required autocomplete="off">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Department</label>
+            <input class="field-input" type="text" name="department" placeholder="Type department name" required autocomplete="off">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Location</label>
+            <input class="field-input" type="text" name="location" placeholder="Type location name" required autocomplete="off">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Toner Type</label>
+            <select class="field-input" name="toner_type" id="portalTonerType" onchange="document.getElementById('portalOtherWrap').style.display = this.value === 'Other' ? 'block' : 'none';">
+              {% for t in toner_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+            </select>
+          </div>
+          <div id="portalOtherWrap" style="display:none; margin-bottom:14px;">
+            <label class="field-label">Specify Toner Type</label>
+            <input class="field-input" type="text" name="toner_type_other" placeholder="e.g. 05A">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="field-label">Quantity (kitni)</label>
+            <input class="field-input" type="number" name="quantity" min="1" value="1" required>
+          </div>
+          <div style="margin-bottom:18px;">
+            <label class="field-label">Remark</label>
+            <textarea class="field-input" name="remark" rows="3" placeholder="Optional note"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%; font-size:1rem;">
+            📨 SUBMIT REQUIREMENT
+          </button>
+        </form>
+      </div>
+
+      {% if entries %}
+      <div class="panel" style="padding: 18px; margin-top: 18px; overflow-x:auto;">
+        <div style="font-weight:700; margin-bottom: 12px; font-size:0.95rem;">📋 Your recent requests</div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Date</th><th>Needed By</th><th>Dept</th><th>Location</th><th>Type</th><th>Qty</th></tr>
+          </thead>
+          <tbody>
+            {% for e in entries %}
+            <tr>
+              <td>{{ e.entry_date | fmt_date }}</td>
+              <td>{{ e.needed_by or '-' }}</td>
+              <td>{{ e.department or '-' }}</td>
+              <td>{{ e.location }}</td>
+              <td>{{ e.toner_type }}</td>
+              <td>{{ e.quantity or 1 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      <div style="text-align:center; margin-top:18px; color:var(--text-dim); font-size:0.78rem;">
+        </> Developed by Azaan
+      </div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

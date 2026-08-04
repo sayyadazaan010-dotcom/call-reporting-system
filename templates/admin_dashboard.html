@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block heading %}User Management{% endblock %}
+{% block subheading %}Add, edit, reset, or remove users and manage their access.{% endblock %}
+
+{% block content %}
+<div style="display:flex; gap:16px; margin-bottom:22px; flex-wrap:wrap;">
+  <div class="stat-card" style="flex:1; min-width:150px;">
+    <div class="stat-label">👥 Total Users</div>
+    <div class="stat-number">{{ total_users }}</div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:150px;">
+    <div class="stat-label">📄 Total Reports</div>
+    <div class="stat-number">{{ total_reports }}</div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:150px;">
+    <div class="stat-label">⏳ Pending</div>
+    <div class="stat-number" style="color: var(--neon-orange);">{{ pending_reports }}</div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:150px;">
+    <div class="stat-label">✅ Completed</div>
+    <div class="stat-number" style="color: var(--neon-green);">{{ completed_reports }}</div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:150px;">
+    <div class="stat-label">🛡 Administrators</div>
+    <div class="stat-number">{{ admin_count }}</div>
+  </div>
+</div>
+
+<div class="panel" style="padding: 22px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+    <div style="font-weight:700; font-size:1.1rem;">👥 All Users</div>
+    <button class="btn btn-primary" onclick="openModal('createUserModal')">+ Add New User</button>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Username</th><th>Role</th><th>Department</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ u.full_name }}</td>
+          <td>{{ u.username }}</td>
+          <td>
+            {% if u.role == 'admin' %}
+              <span class="badge admin">Admin</span>
+            {% elif u.role == 'toner_req' %}
+              <span class="badge pending">Toner Requirement</span>
+            {% else %}
+              <span class="badge employee">Employee</span>
+            {% endif %}
+          </td>
+          <td>{{ u.department or '-' }}</td>
+          <td><span class="badge {{ 'active' if u.is_active else 'inactive' }}">{{ 'Active' if u.is_active else 'Inactive' }}</span></td>
+          <td>{{ u.last_login | fmt_dt }}</td>
+          <td>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" onclick="openResetModal({{ u.id }}, '{{ u.username }}')">🔑 Reset</button>
+              <form method="POST" action="{{ url_for('toggle_active', user_id=u.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-outline btn-sm">{{ '⏸ Deactivate' if u.is_active else '▶ Activate' }}</button>
+              </form>
+              <form method="POST" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;"
+                    onsubmit="return confirm('Delete user {{ u.username }}? This also removes their reports.');">
+                <button type="submit" class="btn btn-danger btn-sm">🗑 Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export All Reports</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;" onchange="toggleCustomRange()">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+        <option value="custom">Custom (From–To)</option>
+      </select>
+    </div>
+    <div id="expRefDateWrap">
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate">
+    </div>
+    <div id="expFromWrap" style="display:none;">
+      <label class="field-label">From date</label>
+      <input class="field-input" type="date" id="expFrom">
+    </div>
+    <div id="expToWrap" style="display:none;">
+      <label class="field-label">To date</label>
+      <input class="field-input" type="date" id="expTo">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal-overlay" id="createUserModal">
+  <div class="panel modal-box" style="display:flex; flex-direction:column; max-height:88vh; padding:16px; overflow:hidden;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-shrink:0;">
+      <div style="font-weight:700; font-size:1.05rem;">➕ Create New User</div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('createUserModal')">✕ Close</button>
+    </div>
+    <form method="POST" action="{{ url_for('create_user') }}" style="display:flex; flex-direction:column; flex:1; min-height:0;">
+      <div class="modal-actions" style="flex-shrink:0; margin:0 0 12px 0; padding:0; position:static;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">✅ Create User</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('createUserModal')">Cancel</button>
+      </div>
+      <div style="overflow-y:auto; flex:1; min-height:0; -webkit-overflow-scrolling:touch; padding-right:4px;">
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Full Name</label>
+          <input class="field-input" name="full_name" required autocomplete="off">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Username</label>
+          <input class="field-input" name="username" required autocomplete="off">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Email</label>
+          <input class="field-input" type="email" name="email" autocomplete="off">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Department</label>
+          <select class="field-input" name="department">
+            {% for dep in departments %}<option value="{{ dep }}">{{ dep }}</option>{% endfor %}
+          </select>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Role</label>
+          <select class="field-input" name="role">
+            <option value="employee">Employee</option>
+            <option value="admin">Administrator</option>
+            <option value="toner_req">Toner Requirement (form only)</option>
+          </select>
+        </div>
+        <div style="margin-bottom:12px; color:var(--text-dim); font-size:0.78rem; line-height:1.4;">
+          <strong style="color:var(--neon-cyan);">Toner Requirement</strong> role: user only sees Date, User Name, Location (type manually), Toner Type, Remark — no other menus.
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Temporary Password</label>
+          <input class="field-input" name="password" placeholder="e.g. welcome123" required>
+        </div>
+      </div>
+      <div class="modal-actions" style="flex-shrink:0; margin:10px 0 0 0; padding:10px 0 0; position:static; border-top:1px solid rgba(59,130,246,0.25);">
+        <button type="submit" class="btn btn-primary" style="flex:1;">✅ Create User</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('createUserModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-overlay" id="resetModal">
+  <div class="panel modal-box">
+    <div style="font-weight:700; font-size:1.1rem; margin-bottom:16px;">🔑 Reset Password for <span id="resetUsername"></span></div>
+    <form method="POST" id="resetForm">
+      <div style="margin-bottom:18px;">
+        <label class="field-label">New Password</label>
+        <input class="field-input" name="new_password" placeholder="Enter new password" required>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">Reset Password</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('resetModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function openResetModal(userId, username) {
+    document.getElementById('resetUsername').textContent = username;
+    document.getElementById('resetForm').action = `/admin/users/${userId}/reset-password`;
+    openModal('resetModal');
+  }
+  function toggleCustomRange() {
+    const isCustom = document.getElementById('expRange').value === 'custom';
+    document.getElementById('expRefDateWrap').style.display = isCustom ? 'none' : '';
+    document.getElementById('expFromWrap').style.display = isCustom ? '' : 'none';
+    document.getElementById('expToWrap').style.display = isCustom ? '' : 'none';
+  }
+  function doExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const today = new Date().toISOString().slice(0,10);
+    if (range === 'custom') {
+      const from = document.getElementById('expFrom').value || today;
+      const to = document.getElementById('expTo').value || today;
+      window.location.href = `/export/custom/${fmt}?from=${from}&to=${to}&date=${from}&scope=all`;
+      return;
+    }
+    const dtField = document.getElementById('expDate').value;
+    const dt = dtField || today;
+    window.location.href = `/export/${range}/${fmt}?date=${dt}&scope=all`;
+  }
+</script>
+{% endblock %}

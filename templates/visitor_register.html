@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Visitor Register{% endblock %}
+{% block heading %}Visitor Register{% endblock %}
+{% block subheading %}Log visitors — date, location, name, purpose, and phone number.{% endblock %}
+
+{% block content %}
+<div class="panel" style="padding: 28px;">
+  <form method="POST" action="{{ url_for('visitor_register') }}">
+    <div class="form-grid">
+      <div>
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="entry_date" value="{{ today }}" required>
+      </div>
+      <div>
+        <label class="field-label">Location</label>
+        <input class="field-input" list="visLocationOptions" name="location" placeholder="Select or type location" required autocomplete="off">
+        <datalist id="visLocationOptions">
+          {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Visitor Name</label>
+        <input class="field-input" type="text" name="visitor_name" placeholder="Visitor full name" required autocomplete="off">
+      </div>
+      <div>
+        <label class="field-label">Phone Number</label>
+        <input class="field-input" type="text" name="phone" placeholder="e.g. 9876543210" required autocomplete="off">
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <label class="field-label">Purpose of Visit</label>
+        <textarea class="field-input" name="purpose" rows="3" placeholder="Why is the visitor here?" required></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 26px; font-size:1rem;">
+      🧍 ADD VISITOR ENTRY
+    </button>
+  </form>
+</div>
+
+<div class="panel" style="padding: 20px; margin-top: 20px; overflow-x:auto;">
+  <div style="font-weight:700; margin-bottom: 14px;">📋 My Visitor Entries</div>
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th>Location</th><th>Visitor Name</th><th>Purpose</th><th>Phone</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.entry_date | fmt_date }}</td>
+        <td>{{ e.location }}</td>
+        <td>{{ e.visitor_name }}</td>
+        <td>{{ e.purpose }}</td>
+        <td>{{ e.phone }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('delete_visitor_entry', entry_id=e.id) }}" onsubmit="return confirm('Delete this visitor entry?');">
+            <button type="submit" class="btn btn-danger btn-sm">🗑 Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center; color:var(--text-dim); padding:24px;">No visitor entries yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+
+<script>
+  function doModuleExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const dtField = document.getElementById('expDate').value;
+    const dt = dtField || new Date().toISOString().slice(0,10);
+    window.location.href = `/visitor-register/export/${range}/${fmt}?date=${dt}`;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const d = document.getElementById('expDate');
+    if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  });
+</script>
+
+{% endblock %}

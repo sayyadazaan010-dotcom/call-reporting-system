@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}Toner Management{% endblock %}
+{% block heading %}Toner Management{% endblock %}
+{% block subheading %}Log toner handovers (with quantity). Open requirements from any location appear as a popup.{% endblock %}
+
+{% block content %}
+<div class="panel" style="padding: 28px;">
+  <form method="POST" action="{{ url_for('toner_management') }}">
+    <div class="form-grid">
+      <div>
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="entry_date" value="{{ today }}" required>
+      </div>
+      <div>
+        <label class="field-label">Location</label>
+        <input class="field-input" list="locationOptions" name="location" placeholder="Select or type a location" required autocomplete="off">
+        <datalist id="locationOptions">
+          {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Department</label>
+        <input class="field-input" list="departmentOptions" name="department" placeholder="Select or type a department" required autocomplete="off">
+        <datalist id="departmentOptions">
+          {% for dep in departments %}<option value="{{ dep }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Handover To</label>
+        <input class="field-input" type="text" name="handover_to" placeholder="Name of the person given the toner" required autocomplete="off">
+      </div>
+      <div>
+        <label class="field-label">Toner Type</label>
+        <select class="field-input" name="toner_type" id="tonerTypeSelect" onchange="toggleOtherToner(this,'tonerTypeOtherWrap')">
+          {% for t in toner_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div id="tonerTypeOtherWrap" style="display:none;">
+        <label class="field-label">Specify Toner Type</label>
+        <input class="field-input" type="text" name="toner_type_other" placeholder="e.g. 05A">
+      </div>
+      <div>
+        <label class="field-label">Quantity (kitni)</label>
+        <input class="field-input" type="number" name="quantity" min="1" value="1" required>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 26px; font-size:1rem;">
+      🖨️ ADD TONER ENTRY
+    </button>
+  </form>
+</div>
+
+<div class="panel" style="padding: 20px; margin-top: 20px; overflow-x:auto;">
+  <div style="font-weight:700; margin-bottom: 14px;">📋 My Toner Entries</div>
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th>Location</th><th>Department</th><th>Handover To</th><th>Toner Type</th><th>Qty</th><th>Reached</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.entry_date | fmt_date }}</td>
+        <td>{{ e.location }}</td>
+        <td>{{ e.department }}</td>
+        <td>{{ e.handover_to }}</td>
+        <td>{{ e.toner_type }}</td>
+        <td>{{ e.quantity or 1 }}</td>
+        <td>
+          {% if not e.reached_eligible %}
+            <span style="color:var(--text-dim); font-size:0.78rem;">Available after 1 day</span>
+          {% elif e.reached == 'Yes' %}
+            <span class="badge completed">✅ Reached</span>
+          {% elif e.reached == 'No' %}
+            <span class="badge pending">❌ Not Reached</span>
+          {% else %}
+            <form method="POST" action="{{ url_for('set_toner_reached', entry_id=e.id) }}" style="display:flex; gap:4px; flex-wrap:wrap;">
+              <button type="submit" name="reached_value" value="Yes" class="btn btn-sm btn-outline">✅ Yes</button>
+              <button type="submit" name="reached_value" value="No" class="btn btn-sm btn-outline">❌ No</button>
+            </form>
+          {% endif %}
+        </td>
+        <td>
+          <button class="btn btn-outline btn-sm"
+            onclick='openEditTonerModal({{ e.id }}, {{ e.entry_date | tojson }}, {{ (e.location or '') | tojson }}, {{ (e.department or '') | tojson }}, {{ (e.handover_to or '') | tojson }}, {{ (e.toner_type or '') | tojson }}, {{ (e.quantity or 1) }})'>
+            ✏️ Edit
+          </button>
+          <form method="POST" action="{{ url_for('delete_toner_entry', entry_id=e.id) }}"
+                style="display:inline;" onsubmit="return confirm('Delete this entry?');">
+            <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center; color:var(--text-dim); padding:24px;">No toner entries yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Edit Toner Modal -->
+<div class="modal-overlay" id="editTonerModal">
+  <div class="panel modal-box">
+    <div style="font-weight:700; font-size:1.1rem; margin-bottom:16px;">✏️ Edit Toner Entry</div>
+    <form method="POST" id="editTonerForm">
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="entry_date" id="editTonerDate" required>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Location</label>
+        <input class="field-input" list="editTonerLocationOptions" name="location" id="editTonerLocation" required autocomplete="off">
+        <datalist id="editTonerLocationOptions">
+          {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+        </datalist>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Department</label>
+        <input class="field-input" list="editTonerDepartmentOptions" name="department" id="editTonerDepartment" required autocomplete="off">
+        <datalist id="editTonerDepartmentOptions">
+          {% for dep in departments %}<option value="{{ dep }}">{% endfor %}
+        </datalist>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Handover To</label>
+        <input class="field-input" type="text" name="handover_to" id="editTonerHandover" required autocomplete="off">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Toner Type</label>
+        <select class="field-input" name="toner_type" id="editTonerTypeSelect" onchange="toggleOtherToner(this,'editTonerTypeOtherWrap')">
+          {% for t in toner_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div id="editTonerTypeOtherWrap" style="display:none; margin-bottom:14px;">
+        <label class="field-label">Specify Toner Type</label>
+        <input class="field-input" type="text" name="toner_type_other" id="editTonerTypeOther">
+      </div>
+      <div style="margin-bottom:18px;">
+        <label class="field-label">Quantity</label>
+        <input class="field-input" type="number" name="quantity" id="editTonerQty" min="1" value="1" required>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save Changes</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('editTonerModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if open_reqs %}
+<!-- Popup: open toner requirements from any location -->
+<div class="modal-overlay show" id="openReqPopup">
+  <div class="panel modal-box" style="width:min(560px, 94vw); max-height:85vh; overflow-y:auto;">
+    <div style="font-weight:800; font-size:1.15rem; margin-bottom:6px;">📨 New Toner Requirements</div>
+    <div style="color:var(--text-dim); font-size:0.85rem; margin-bottom:14px;">
+      Requests submitted from locations. Acknowledge after you have noted / arranged them.
+    </div>
+    {% for r in open_reqs %}
+    <div style="border:1px solid var(--border-glow); border-radius:12px; padding:14px; margin-bottom:12px; background:rgba(4,10,28,0.45);">
+      <div style="font-size:0.9rem;">
+        <strong>{{ r.entry_date | fmt_date }}</strong>
+        · {{ r.location or '-' }}
+        · <span class="badge pending">{{ r.toner_type }} × {{ r.quantity or 1 }}</span>
+      </div>
+      <div style="color:var(--text-dim); font-size:0.82rem; margin-top:6px;">
+        Dept: {{ r.department or '-' }} · Needed by: {{ r.needed_by or '-' }} · Req by: {{ r.requester_name or r.employee_name or '-' }}
+        {% if r.remark %}<br>Remark: {{ r.remark }}{% endif %}
+      </div>
+      <form method="POST" action="{{ url_for('ack_toner_requirement', entry_id=r.id) }}" style="margin-top:10px;">
+        <button type="submit" class="btn btn-primary btn-sm" style="width:100%;">✅ Acknowledge / Seen</button>
+      </form>
+    </div>
+    {% endfor %}
+    <button type="button" class="btn btn-outline" style="width:100%;" onclick="closeModal('openReqPopup')">Close (keep open)</button>
+  </div>
+</div>
+{% elif pending_followups %}
+<div class="modal-overlay show" id="tonerReachedPopup">
+  <div class="panel modal-box" style="width:min(520px, 94vw);">
+    <div style="font-weight:800; font-size:1.15rem; margin-bottom:8px;">🔔 Toner Follow-up Required</div>
+    <div style="color:var(--text-dim); font-size:0.88rem; margin-bottom:16px;">
+      These toner handovers were submitted more than 1 day ago. Mark Reached status.
+    </div>
+    {% for e in pending_followups %}
+    <div style="border:1px solid var(--border-glow); border-radius:12px; padding:14px; margin-bottom:12px; background:rgba(4,10,28,0.45);">
+      <div style="font-size:0.9rem; margin-bottom:8px;">
+        <strong>{{ e.entry_date | fmt_date }}</strong> · {{ e.location }} · {{ e.toner_type }} × {{ e.quantity or 1 }}
+        <div style="color:var(--text-dim); font-size:0.82rem; margin-top:4px;">Handover to: {{ e.handover_to }}</div>
+      </div>
+      <form method="POST" action="{{ url_for('set_toner_reached', entry_id=e.id) }}" style="display:flex; gap:8px;">
+        <button type="submit" name="reached_value" value="Yes" class="btn btn-primary btn-sm" style="flex:1;">✅ Reached</button>
+        <button type="submit" name="reached_value" value="No" class="btn btn-outline btn-sm" style="flex:1;">❌ Not Reached</button>
+      </form>
+    </div>
+    {% endfor %}
+    <button type="button" class="btn btn-outline" style="width:100%; margin-top:6px;" onclick="closeModal('tonerReachedPopup')">Remind me later</button>
+  </div>
+</div>
+{% endif %}
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function toggleOtherToner(sel, wrapId) {
+    document.getElementById(wrapId).style.display = (sel.value === 'Other') ? 'block' : 'none';
+  }
+  function openEditTonerModal(id, entryDate, location, department, handoverTo, tonerType, qty) {
+    document.getElementById('editTonerForm').action = `/toner/${id}/edit`;
+    document.getElementById('editTonerDate').value = entryDate;
+    document.getElementById('editTonerLocation').value = location;
+    document.getElementById('editTonerDepartment').value = department;
+    document.getElementById('editTonerHandover').value = handoverTo;
+    document.getElementById('editTonerQty').value = qty || 1;
+    const sel = document.getElementById('editTonerTypeSelect');
+    const knownValues = Array.from(sel.options).map(o => o.value);
+    if (knownValues.includes(tonerType)) {
+      sel.value = tonerType;
+      document.getElementById('editTonerTypeOtherWrap').style.display = (tonerType === 'Other') ? 'block' : 'none';
+    } else {
+      sel.value = 'Other';
+      document.getElementById('editTonerTypeOtherWrap').style.display = 'block';
+      document.getElementById('editTonerTypeOther').value = tonerType;
+    }
+    openModal('editTonerModal');
+  }
+</script>
+
+<script>
+  function doModuleExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const dtField = document.getElementById('expDate').value;
+    const dt = dtField || new Date().toISOString().slice(0,10);
+    window.location.href = `/toner/export/${range}/${fmt}?date=${dt}`;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const d = document.getElementById('expDate');
+    if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  });
+</script>
+
+{% endblock %}

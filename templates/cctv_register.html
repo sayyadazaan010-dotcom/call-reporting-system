@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}CCTV Register{% endblock %}
+{% block heading %}CCTV Register{% endblock %}
+{% block subheading %}Log who viewed CCTV footage, when, from where, and why.{% endblock %}
+
+{% block content %}
+<div class="panel" style="padding: 28px;">
+  <form method="POST" action="{{ url_for('cctv_register') }}">
+    <div class="form-grid">
+      <div>
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="entry_date" value="{{ today }}" required>
+      </div>
+      <div>
+        <label class="field-label">User Name</label>
+        <input class="field-input" type="text" name="viewer_name" placeholder="Name of the person viewing CCTV" required autocomplete="off">
+      </div>
+      <div>
+        <label class="field-label">Department</label>
+        <input class="field-input" list="departmentOptions" name="department" placeholder="Select or type a department" required autocomplete="off">
+        <datalist id="departmentOptions">
+          {% for dep in departments %}<option value="{{ dep }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Location</label>
+        <input class="field-input" list="locationOptions" name="location" placeholder="Select or type a location" required autocomplete="off">
+        <datalist id="locationOptions">
+          {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Purpose</label>
+        <input class="field-input" type="text" name="purpose" value="To view CCTV footage" required autocomplete="off">
+      </div>
+      <div>
+        <label class="field-label">Remark</label>
+        <input class="field-input" type="text" name="remark" placeholder="Any additional remark" autocomplete="off">
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 26px; font-size:1rem;">
+      📹 ADD CCTV ENTRY
+    </button>
+  </form>
+</div>
+
+<div class="panel" style="padding: 20px; margin-top: 20px; overflow-x:auto;">
+  <div style="font-weight:700; margin-bottom: 14px;">📋 My CCTV Register Entries</div>
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th>User Name</th><th>Department</th><th>Location</th><th>Purpose</th><th>Remark</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.entry_date | fmt_date }}</td>
+        <td>{{ e.viewer_name }}</td>
+        <td>{{ e.department }}</td>
+        <td>{{ e.location }}</td>
+        <td>{{ e.purpose }}</td>
+        <td>{{ e.remark or '-' }}</td>
+        <td>
+          <button class="btn btn-outline btn-sm"
+            onclick='openEditCctvModal({{ e.id }}, {{ e.entry_date | tojson }}, {{ (e.viewer_name or '') | tojson }}, {{ (e.department or '') | tojson }}, {{ (e.location or '') | tojson }}, {{ (e.purpose or '') | tojson }}, {{ (e.remark or '') | tojson }})'>
+            ✏️ Edit
+          </button>
+          <form method="POST" action="{{ url_for('delete_cctv_entry', entry_id=e.id) }}"
+                style="display:inline;" onsubmit="return confirm('Delete this entry?');">
+            <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center; color:var(--text-dim); padding:24px;">No CCTV register entries yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Edit CCTV Modal -->
+<div class="modal-overlay" id="editCctvModal">
+  <div class="panel modal-box">
+    <div style="font-weight:700; font-size:1.1rem; margin-bottom:16px;">✏️ Edit CCTV Register Entry</div>
+    <form method="POST" id="editCctvForm">
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="entry_date" id="editCctvDate" required>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">User Name</label>
+        <input class="field-input" type="text" name="viewer_name" id="editCctvViewer" required autocomplete="off">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Department</label>
+        <input class="field-input" list="editCctvDepartmentOptions" name="department" id="editCctvDepartment" required autocomplete="off">
+        <datalist id="editCctvDepartmentOptions">
+          {% for dep in departments %}<option value="{{ dep }}">{% endfor %}
+        </datalist>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Location</label>
+        <input class="field-input" list="editCctvLocationOptions" name="location" id="editCctvLocation" required autocomplete="off">
+        <datalist id="editCctvLocationOptions">
+          {% for loc in locations %}<option value="{{ loc }}">{% endfor %}
+        </datalist>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label class="field-label">Purpose</label>
+        <input class="field-input" type="text" name="purpose" id="editCctvPurpose" required autocomplete="off">
+      </div>
+      <div style="margin-bottom:18px;">
+        <label class="field-label">Remark</label>
+        <input class="field-input" type="text" name="remark" id="editCctvRemark" autocomplete="off">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save Changes</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('editCctvModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doModuleExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function openEditCctvModal(id, entryDate, viewerName, department, location, purpose, remark) {
+    document.getElementById('editCctvForm').action = `/cctv/${id}/edit`;
+    document.getElementById('editCctvDate').value = entryDate;
+    document.getElementById('editCctvViewer').value = viewerName;
+    document.getElementById('editCctvDepartment').value = department;
+    document.getElementById('editCctvLocation').value = location;
+    document.getElementById('editCctvPurpose').value = purpose;
+    document.getElementById('editCctvRemark').value = remark;
+    openModal('editCctvModal');
+  }
+</script>
+
+<script>
+  function doModuleExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const dtField = document.getElementById('expDate').value;
+    const dt = dtField || new Date().toISOString().slice(0,10);
+    window.location.href = `/cctv/export/${range}/${fmt}?date=${dt}`;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const d = document.getElementById('expDate');
+    if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  });
+</script>
+
+{% endblock %}

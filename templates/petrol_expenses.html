@@ -1,0 +1,700 @@
+{% extends "base.html" %}
+{% block title %}Petrol Expenses{% endblock %}
+{% block heading %}Petrol Expenses{% endblock %}
+{% block subheading %}Log your travel expenses — amount auto-calculates at ₹{{ rate_per_km }}/km.{% endblock %}
+
+{% block content %}
+<div style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+  <div class="stat-card" style="flex:1; min-width:180px;">
+    <div class="stat-label">⛽ Total Entries</div>
+    <div class="stat-number">{{ entries|length }}</div>
+  </div>
+  <div class="stat-card" style="flex:1; min-width:180px;">
+    <div class="stat-label">💰 Total Amount</div>
+    <div class="stat-number" style="color: var(--neon-green);">₹{{ '%.2f' | format(total_amount) }}</div>
+  </div>
+</div>
+
+<div class="panel" style="padding: 28px;">
+  <form method="POST" action="{{ url_for('petrol_expenses') }}" id="petrolForm">
+
+    <div style="margin-bottom:18px;">
+      <label class="field-label">Entry type</label>
+      <div class="toggle-group" data-toggle-group data-target="#entryModeInput" id="entryModeGroup">
+        <div class="toggle-option active" data-value="stay" onclick="setEntryMode(this, 'stay')">
+          📍 Only Reported At<br><span style="font-size:0.75rem; opacity:0.8;">Same location — no travel</span>
+        </div>
+        <div class="toggle-option" data-value="travel" onclick="setEntryMode(this, 'travel')">
+          🛣️ Travelled<br><span style="font-size:0.75rem; opacity:0.8;">Route / KM / amount</span>
+        </div>
+        <div class="toggle-option" data-value="sunday" onclick="setEntryMode(this, 'sunday')">
+          🌴 Sunday / Holiday<br><span style="font-size:0.75rem; opacity:0.8;">Weekly off — export mein dikhega</span>
+        </div>
+      </div>
+      <input type="hidden" name="entry_mode" id="entryModeInput" value="stay">
+      <div id="sundayHint" style="display:none; margin-top:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--neon-orange); background:rgba(245,158,11,0.1); color:var(--neon-orange); font-size:0.85rem;">
+        📅 Sunday / Holiday — travel details ki zaroorat nahi. Export PDF/Excel mein ye din <b>SUNDAY</b> ke naam se dikhega.
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <div>
+        <label class="field-label">Date</label>
+        <input class="field-input" type="date" name="expense_date" id="expenseDateInput" value="{{ today }}" required onchange="onExpenseDateChange()">
+      </div>
+
+      <div id="reportedAtBlock">
+        <label class="field-label">📍 Reported At</label>
+        <select class="field-input" id="reportedAtSelect" onchange="onReportedAtSelect(this.value)">
+          <option value="">-- Select location --</option>
+          {% for loc in locations %}
+          <option value="{{ loc }}">{{ loc }}</option>
+          {% endfor %}
+          <option value="__custom__">Other / Type manually…</option>
+        </select>
+        <input class="field-input" list="reportedAtOptions" id="reportedAtInput" name="reported_at"
+               placeholder="Select above or type location" autocomplete="off" style="margin-top:8px;">
+        <datalist id="reportedAtOptions">
+          {% for loc in locations %}
+            <option value="{{ loc }}">
+          {% endfor %}
+        </datalist>
+        <div style="color: var(--text-dim); font-size: 0.78rem; margin-top:6px;">
+          Jahan morning report / base hai — select karo ya manually type karo
+        </div>
+      </div>
+    </div>
+
+    <!-- Travel-only section (hidden when Only Reported At) -->
+    <div id="travelSection" style="display:none; margin-top:18px;">
+      <div style="margin-bottom:18px;">
+        <label class="field-label">🛣️ Quick Route (auto KM + amount)</label>
+        <select class="field-input" id="routeSelect" onchange="applyPresetRoute(this.value)">
+          <option value="">-- Select a fixed route --</option>
+          {% for r in petrol_routes %}
+          <option value="{{ loop.index0 }}">
+            {{ r.label }} — {{ r.km }} km (₹{{ '%.2f' | format(r.km * rate_per_km) }})
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-grid">
+        <div>
+          <label class="field-label">Location Visited</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <select class="field-input" id="locationSelect" style="flex:1; min-width:160px;" onchange="onLocationSelectChange(this.value)">
+              <option value="">-- Select a location --</option>
+              {% for loc in locations %}
+              <option value="{{ loc }}">{{ loc }}</option>
+              {% endfor %}
+              <option value="__custom__">Other / Type manually…</option>
+            </select>
+            <input class="field-input" list="locationOptions" id="locationInput" name="location"
+                   placeholder="Or type location / route" autocomplete="off" style="flex:1; min-width:160px;">
+            <button type="button" class="btn btn-outline" onclick="toggleMapPicker()" style="white-space:nowrap;">📍 Pick on Map</button>
+          </div>
+          <datalist id="locationOptions">
+            {% for loc in locations %}
+              <option value="{{ loc }}">
+            {% endfor %}
+            {% for r in petrol_routes %}
+              <option value="{{ r.location }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div>
+          <label class="field-label">KM Travelled</label>
+          <input class="field-input" type="number" step="0.1" min="0" id="kmInput" placeholder="e.g. 24" name="km" oninput="calcAmount()">
+          <div style="color: var(--text-dim); font-size: 0.78rem; margin-top:6px;">Rate: ₹{{ rate_per_km }} / km</div>
+        </div>
+        <div>
+          <label class="field-label">Amount (₹)</label>
+          <input class="field-input" type="number" step="0.01" min="0" id="amountInput" name="amount" placeholder="Auto or type manually">
+        </div>
+      </div>
+    </div>
+
+    <div id="mapPickerPanel" style="display:none; margin-top:20px; border:1px solid var(--border, #333); border-radius:10px; overflow:hidden;">
+
+      <div style="padding:10px 12px; display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,0.08);">
+        <button type="button" class="btn btn-sm" id="modeSingleBtn" onclick="setMapMode('single')">📍 One Location</button>
+        <button type="button" class="btn btn-sm btn-outline" id="modeRouteBtn" onclick="setMapMode('route')">🛣️ Two-Point Distance (auto KM)</button>
+      </div>
+
+      <div style="padding:10px 12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <label style="font-size:0.8rem; color:var(--text-dim); white-space:nowrap;">⭐ Quick Service Centers:</label>
+        <select class="field-input" id="presetSelect" style="flex:1; min-width:180px;" onchange="usePreset(this.value)">
+          <option value="">-- Select a service center --</option>
+        </select>
+      </div>
+
+      <div style="padding:0 12px 8px 12px; display:flex; gap:8px;">
+        <input type="text" id="mapSearchInput" class="field-input" placeholder="Or search a place in Goa (e.g. Calangute, Verna)" style="flex:1;">
+        <button type="button" class="btn btn-outline" onclick="searchGoaPlace()">🔍 Search</button>
+      </div>
+      <div id="mapSearchResults" style="padding:0 12px 8px 12px; font-size:0.85rem;"></div>
+
+      <div id="routeStatus" style="display:none; padding:0 12px 10px 12px; font-size:0.85rem;">
+        <div>🟢 Start: <span id="startText" style="color:var(--text-dim);">tap map or pick above</span></div>
+        <div>🔴 End: <span id="endText" style="color:var(--text-dim);">tap map or pick above</span></div>
+        <div id="distanceText" style="margin-top:4px; font-weight:700;"></div>
+      </div>
+
+      <div id="goaMap" style="height:320px; width:100%;"></div>
+
+      <div style="padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div id="mapSelectedText" style="color:var(--text-dim); font-size:0.82rem;">Tap the map or search to drop a pin.</div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline btn-sm" id="resetPointsBtn" style="display:none;" onclick="resetRoutePoints()">↺ Reset</button>
+          <button type="button" class="btn btn-primary btn-sm" id="confirmBtn" onclick="confirmMapLocation()">✅ Use this location</button>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width:100%; margin-top: 26px; font-size:1rem;">
+      ⛽ ADD EXPENSE ENTRY
+    </button>
+  </form>
+</div>
+
+<div class="panel" style="padding: 20px; margin-top: 20px; overflow-x:auto;">
+  <div style="font-weight:700; margin-bottom: 14px;">📋 My Petrol Expense Entries</div>
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th>Reported At</th><th>Location Visited</th><th>KM</th><th>Amount (₹)</th><th>Action</th></tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td>{{ e.expense_date | fmt_date }}</td>
+        {% if e.day_type == 'Sunday' %}
+        <td colspan="3" style="color: var(--neon-orange); font-weight:600;">🌴 SUNDAY — Weekly Holiday / Non-working day</td>
+        <td>₹0.00</td>
+        {% else %}
+        <td>{{ e.reported_at or '-' }}</td>
+        <td>{{ e.location }}</td>
+        <td>{{ e.km if e.km is not none else '-' }}</td>
+        <td>₹{{ '%.2f' | format(e.amount or 0) }}</td>
+        {% endif %}
+        <td style="white-space:nowrap;">
+          <button type="button" class="btn btn-outline btn-sm"
+            onclick='openEditPetrolModal({{ e.id }}, {{ e.expense_date | tojson }}, {{ (e.reported_at or "") | tojson }}, {{ (e.location or "") | tojson }}, {{ e.km if e.km is not none else "null" }}, {{ e.amount if e.amount is not none else 0 }}, {{ (e.day_type or "Working") | tojson }})'>
+            ✏️ Edit
+          </button>
+          <form method="POST" action="{{ url_for('delete_petrol_expense', entry_id=e.id) }}"
+                style="display:inline;" onsubmit="return confirm('Delete this entry?');">
+            <button type="submit" class="btn btn-danger btn-sm">🗑 Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center; color:var(--text-dim); padding:24px;">No petrol expense entries yet.</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if entries %}
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align:right; font-weight:700;">Total</td>
+        <td style="font-weight:700; color: var(--neon-green);">₹{{ '%.2f' | format(total_amount) }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+
+<!-- Edit Petrol Expense Modal -->
+<div class="modal-overlay" id="editPetrolModal">
+  <div class="panel modal-box" style="width:min(520px,96vw); max-height:90vh; overflow:auto;">
+    <div class="modal-header-row">
+      <div style="font-weight:700;">✏️ Edit Petrol Expense</div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('editPetrolModal')">✕ Close</button>
+    </div>
+    <form method="POST" id="editPetrolForm">
+      <div style="display:grid; gap:12px;">
+        <div>
+          <label class="field-label">Date</label>
+          <input class="field-input" type="date" name="expense_date" id="editPetrolDate" required>
+        </div>
+        <div>
+          <label class="field-label">Day type</label>
+          <select class="field-input" name="day_type" id="editPetrolDayType" onchange="onEditDayTypeChange()">
+            <option value="Working">Working</option>
+            <option value="Sunday">Sunday / Holiday</option>
+          </select>
+        </div>
+        <div id="editReportedAtWrap">
+          <label class="field-label">Reported At (optional for travel)</label>
+          <input class="field-input" list="editReportedAtOptions" name="reported_at" id="editPetrolReportedAt" placeholder="e.g. Porvorim Arena" autocomplete="off">
+          <datalist id="editReportedAtOptions">
+            {% for loc in locations %}
+            <option value="{{ loc }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div>
+          <label class="field-label">Location Visited</label>
+          <input class="field-input" list="editLocationOptionsPetrol" name="location" id="editPetrolLocation" placeholder="Location or route" autocomplete="off">
+          <datalist id="editLocationOptionsPetrol">
+            {% for loc in locations %}
+            <option value="{{ loc }}">
+            {% endfor %}
+            {% for r in petrol_routes %}
+            <option value="{{ r.location }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div id="editKmAmountWrap" class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div>
+            <label class="field-label">KM</label>
+            <input class="field-input" type="number" step="0.1" min="0" name="km" id="editPetrolKm" oninput="calcEditAmount()">
+          </div>
+          <div>
+            <label class="field-label">Amount (₹)</label>
+            <input class="field-input" type="number" step="0.01" min="0" name="amount" id="editPetrolAmount">
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top:14px;">
+        <button type="submit" class="btn btn-primary" style="flex:1;">💾 Save Changes</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('editPetrolModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="panel" style="padding: 22px; margin-top: 20px;">
+  <div style="font-weight:700; margin-bottom: 14px;">📤 Export Petrol Expenses</div>
+  <form style="display:flex; gap:14px; flex-wrap:wrap; align-items:end;">
+    <div>
+      <label class="field-label">Range</label>
+      <select class="field-input" id="expRange" style="min-width:140px;">
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Reference date</label>
+      <input class="field-input" type="date" id="expDate" value="{{ today }}">
+    </div>
+    <button type="button" class="btn btn-outline" onclick="doExport('pdf')">📕 Export PDF</button>
+    <button type="button" class="btn btn-outline" onclick="doExport('excel')">📗 Export Excel</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  const RATE = {{ rate_per_km }};
+  const PRESET_ROUTES = [
+    {% for r in petrol_routes %}
+    { label: {{ r.label | tojson }}, location: {{ r.location | tojson }}, km: {{ r.km }} }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
+
+  function calcAmount() {
+    const km = parseFloat(document.getElementById('kmInput').value);
+    if (!isNaN(km)) {
+      document.getElementById('amountInput').value = (km * RATE).toFixed(2);
+    }
+  }
+
+  function calcEditAmount() {
+    const km = parseFloat(document.getElementById('editPetrolKm').value);
+    if (!isNaN(km)) {
+      document.getElementById('editPetrolAmount').value = (km * RATE).toFixed(2);
+    }
+  }
+
+  function onEditDayTypeChange() {
+    const isSunday = document.getElementById('editPetrolDayType').value === 'Sunday';
+    document.getElementById('editKmAmountWrap').style.display = isSunday ? 'none' : '';
+    if (isSunday) {
+      document.getElementById('editPetrolKm').value = '0';
+      document.getElementById('editPetrolAmount').value = '0';
+      if (!document.getElementById('editPetrolLocation').value) {
+        document.getElementById('editPetrolLocation').value = 'SUNDAY — Weekly Holiday / Non-working day';
+      }
+    }
+  }
+
+  function openEditPetrolModal(id, expenseDate, reportedAt, location, km, amount, dayType) {
+    document.getElementById('editPetrolForm').action = `/petrol-expenses/${id}/edit`;
+    document.getElementById('editPetrolDate').value = expenseDate || '';
+    document.getElementById('editPetrolDayType').value = dayType || 'Working';
+    document.getElementById('editPetrolReportedAt').value = reportedAt || '';
+    document.getElementById('editPetrolLocation').value = location || '';
+    document.getElementById('editPetrolKm').value = (km === null || km === undefined) ? '' : km;
+    document.getElementById('editPetrolAmount').value = amount != null ? amount : '';
+    onEditDayTypeChange();
+    openModal('editPetrolModal');
+  }
+
+  let userPickedEntryMode = false;
+
+  function setEntryMode(el, mode, isAuto) {
+    if (!isAuto) userPickedEntryMode = true;
+    document.querySelectorAll('#entryModeGroup .toggle-option').forEach(o => o.classList.remove('active'));
+    if (el) el.classList.add('active');
+    else {
+      const opt = document.querySelector(`#entryModeGroup .toggle-option[data-value="${mode}"]`);
+      if (opt) opt.classList.add('active');
+    }
+    document.getElementById('entryModeInput').value = mode;
+
+    const travel = document.getElementById('travelSection');
+    const reportedBlock = document.getElementById('reportedAtBlock');
+    const sundayHint = document.getElementById('sundayHint');
+    const reportedInput = document.getElementById('reportedAtInput');
+
+    if (mode === 'travel') {
+      travel.style.display = '';
+      reportedBlock.style.display = 'none';
+      sundayHint.style.display = 'none';
+      if (reportedInput) {
+        reportedInput.required = false;
+        reportedInput.value = '';
+      }
+    } else if (mode === 'sunday') {
+      travel.style.display = 'none';
+      reportedBlock.style.display = 'none';
+      sundayHint.style.display = '';
+      if (reportedInput) {
+        reportedInput.required = false;
+        reportedInput.value = '';
+      }
+      const loc = document.getElementById('locationInput');
+      const km = document.getElementById('kmInput');
+      const amt = document.getElementById('amountInput');
+      if (loc) loc.value = '';
+      if (km) km.value = '';
+      if (amt) amt.value = '';
+    } else {
+      // stay
+      travel.style.display = 'none';
+      reportedBlock.style.display = '';
+      sundayHint.style.display = 'none';
+      if (reportedInput) reportedInput.required = true;
+      const loc = document.getElementById('locationInput');
+      const km = document.getElementById('kmInput');
+      const amt = document.getElementById('amountInput');
+      if (loc) loc.value = '';
+      if (km) km.value = '';
+      if (amt) amt.value = '';
+      const rs = document.getElementById('routeSelect');
+      if (rs) rs.value = '';
+    }
+  }
+
+  function onExpenseDateChange() {
+    const val = document.getElementById('expenseDateInput').value;
+    if (!val || userPickedEntryMode) return;
+    const d = new Date(val + 'T00:00:00');
+    if (d.getDay() === 0) {
+      // Auto-mark Sunday
+      setEntryMode(null, 'sunday', true);
+    }
+  }
+
+  function onReportedAtSelect(val) {
+    if (!val || val === '__custom__') {
+      if (val === '__custom__') document.getElementById('reportedAtInput').focus();
+      return;
+    }
+    document.getElementById('reportedAtInput').value = val;
+  }
+
+  function onLocationSelectChange(val) {
+    if (!val || val === '__custom__') {
+      if (val === '__custom__') document.getElementById('locationInput').focus();
+      return;
+    }
+    document.getElementById('locationInput').value = val;
+  }
+
+  function applyPresetRoute(idxStr) {
+    if (idxStr === '' || idxStr === null || idxStr === undefined) return;
+    const idx = parseInt(idxStr, 10);
+    if (isNaN(idx) || !PRESET_ROUTES[idx]) return;
+    const r = PRESET_ROUTES[idx];
+    document.getElementById('locationInput').value = r.location;
+    document.getElementById('kmInput').value = r.km;
+    document.getElementById('amountInput').value = (r.km * RATE).toFixed(2);
+  }
+
+  function doExport(fmt) {
+    const range = document.getElementById('expRange').value;
+    const dt = document.getElementById('expDate').value;
+    window.location.href = `/petrol-expenses/export/${range}/${fmt}?date=${dt}`;
+  }
+
+  // ---- Goa Map Picker ----
+  // Bounding box roughly covering all of Goa
+  const GOA_BOUNDS = { left: 73.65, top: 15.85, right: 74.45, bottom: 14.85 };
+  const GOA_CENTER = [15.2993, 74.1240];
+
+  // Your 11 service centers, pre-loaded for quick selection
+  const PRESET_LOCATIONS = [
+    { name: "Nexa Service - Mapusa (Karaswada)", lat: 15.6115248, lon: 73.8267884 },
+    { name: "Maruti Suzuki Service - Mapusa (Dhular)", lat: 15.5982219, lon: 73.8126403 },
+    { name: "Maruti Suzuki Service - Colvale (Thivim Industrial Estate)", lat: 15.6135, lon: 73.8255 },
+    { name: "Maruti Suzuki ARENA - Porvorim", lat: 15.5124738, lon: 73.8351978 },
+    { name: "NEXA - Porvorim (NH66)", lat: 15.5360996, lon: 73.8228727 },
+    { name: "Nexa Service - Porvorim (Salvador Do Mundo)", lat: 15.5350401, lon: 73.8282724 },
+    { name: "Maruti Suzuki Service - Panaji (St Inez)", lat: 15.4832783, lon: 73.8200843 },
+    { name: "Maruti Suzuki Yard - Pilerne", lat: 15.5329055, lon: 73.8178505 },
+    { name: "Maruti Suzuki ARENA - Bicholim", lat: 15.5875, lon: 73.9523467 },
+    { name: "NEXA - Bicholim (Karapur)", lat: 15.5740915, lon: 73.9119898 },
+    { name: "Maruti Suzuki ARENA - Verna", lat: 15.3275171, lon: 73.9354696 }
+  ];
+
+  let goaMap = null;
+  let goaMarker = null;         // used in single mode
+  let startMarker = null;       // used in route mode
+  let endMarker = null;         // used in route mode
+  let selectedPlaceName = '';
+  let startPoint = null;        // {lat, lon, name}
+  let endPoint = null;          // {lat, lon, name}
+  let routeLine = null;
+  let mapMode = 'single';       // 'single' or 'route'
+  let calculatedDistanceKm = null;
+
+  function populatePresets() {
+    const sel = document.getElementById('presetSelect');
+    if (sel.options.length > 1) return;
+    PRESET_LOCATIONS.forEach((loc, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = loc.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function usePreset(idx) {
+    if (idx === '') return;
+    const loc = PRESET_LOCATIONS[parseInt(idx)];
+    handlePointSelected(loc.lat, loc.lon, loc.name);
+    document.getElementById('presetSelect').value = '';
+  }
+
+  function initGoaMap() {
+    populatePresets();
+    if (goaMap) { setTimeout(() => goaMap.invalidateSize(), 200); return; }
+    goaMap = L.map('goaMap').setView(GOA_CENTER, 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(goaMap);
+
+    goaMap.on('click', function (e) {
+      reverseGeocodeThen(e.latlng.lat, e.latlng.lng, (name) => {
+        handlePointSelected(e.latlng.lat, e.latlng.lng, name);
+      });
+    });
+
+    setTimeout(() => goaMap.invalidateSize(), 200);
+  }
+
+  function setMapMode(mode) {
+    mapMode = mode;
+    document.getElementById('modeSingleBtn').className = mode === 'single' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+    document.getElementById('modeRouteBtn').className = mode === 'route' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+    document.getElementById('routeStatus').style.display = mode === 'route' ? 'block' : 'none';
+    document.getElementById('mapSelectedText').style.display = mode === 'single' ? 'block' : 'none';
+    document.getElementById('resetPointsBtn').style.display = mode === 'route' ? 'inline-block' : 'none';
+    resetRoutePoints();
+    if (goaMarker) { goaMap.removeLayer(goaMarker); goaMarker = null; }
+    selectedPlaceName = '';
+  }
+
+  function resetRoutePoints() {
+    startPoint = null; endPoint = null; calculatedDistanceKm = null;
+    if (startMarker) { goaMap.removeLayer(startMarker); startMarker = null; }
+    if (endMarker) { goaMap.removeLayer(endMarker); endMarker = null; }
+    if (routeLine) { goaMap.removeLayer(routeLine); routeLine = null; }
+    document.getElementById('startText').textContent = 'tap map or pick above';
+    document.getElementById('endText').textContent = 'tap map or pick above';
+    document.getElementById('distanceText').textContent = '';
+  }
+
+  function handlePointSelected(lat, lon, name) {
+    if (mapMode === 'single') {
+      placeSingleMarker(lat, lon);
+      selectedPlaceName = name;
+      document.getElementById('mapSelectedText').textContent = '📍 ' + name;
+    } else {
+      if (!startPoint) {
+        startPoint = { lat, lon, name };
+        startMarker = L.marker([lat, lon], { draggable: true }).addTo(goaMap)
+          .bindPopup('Start').openPopup();
+        startMarker.on('dragend', function () {
+          const p = startMarker.getLatLng();
+          reverseGeocodeThen(p.lat, p.lng, (n) => { startPoint = { lat: p.lat, lon: p.lng, name: n }; document.getElementById('startText').textContent = n; drawRouteIfReady(); });
+        });
+        document.getElementById('startText').textContent = name;
+      } else if (!endPoint) {
+        endPoint = { lat, lon, name };
+        endMarker = L.marker([lat, lon], { draggable: true }).addTo(goaMap)
+          .bindPopup('End').openPopup();
+        endMarker.on('dragend', function () {
+          const p = endMarker.getLatLng();
+          reverseGeocodeThen(p.lat, p.lng, (n) => { endPoint = { lat: p.lat, lon: p.lng, name: n }; document.getElementById('endText').textContent = n; drawRouteIfReady(); });
+        });
+        document.getElementById('endText').textContent = name;
+      } else {
+        // both already set — start a fresh pair
+        resetRoutePoints();
+        handlePointSelected(lat, lon, name);
+        return;
+      }
+      goaMap.setView([lat, lon], 13);
+      drawRouteIfReady();
+    }
+  }
+
+  function drawRouteIfReady() {
+    if (!startPoint || !endPoint) return;
+    if (routeLine) { goaMap.removeLayer(routeLine); routeLine = null; }
+    document.getElementById('distanceText').textContent = 'Calculating road distance…';
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${startPoint.lon},${startPoint.lat};${endPoint.lon},${endPoint.lat}?overview=full&geometries=geojson`;
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.routes && data.routes.length) {
+          const meters = data.routes[0].distance;
+          calculatedDistanceKm = meters / 1000;
+          document.getElementById('distanceText').textContent = `🛣️ Road distance: ${calculatedDistanceKm.toFixed(1)} km`;
+          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          routeLine = L.polyline(coords, { color: '#22d3ee', weight: 4 }).addTo(goaMap);
+          goaMap.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+        } else {
+          fallbackStraightLine();
+        }
+      })
+      .catch(fallbackStraightLine);
+  }
+
+  function fallbackStraightLine() {
+    // Haversine straight-line distance, x1.3 as a rough road-distance estimate
+    const R = 6371;
+    const dLat = (endPoint.lat - startPoint.lat) * Math.PI / 180;
+    const dLon = (endPoint.lon - startPoint.lon) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(startPoint.lat * Math.PI / 180) * Math.cos(endPoint.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    const straightKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    calculatedDistanceKm = straightKm * 1.3;
+    document.getElementById('distanceText').textContent = `🛣️ Approx. distance: ${calculatedDistanceKm.toFixed(1)} km (estimated)`;
+    if (routeLine) goaMap.removeLayer(routeLine);
+    routeLine = L.polyline([[startPoint.lat, startPoint.lon], [endPoint.lat, endPoint.lon]], { color: '#22d3ee', weight: 3, dashArray: '6,6' }).addTo(goaMap);
+  }
+
+  function placeSingleMarker(lat, lon) {
+    if (goaMarker) {
+      goaMarker.setLatLng([lat, lon]);
+    } else {
+      goaMarker = L.marker([lat, lon], { draggable: true }).addTo(goaMap);
+      goaMarker.on('dragend', function () {
+        const pos = goaMarker.getLatLng();
+        reverseGeocodeThen(pos.lat, pos.lng, (n) => {
+          selectedPlaceName = n;
+          document.getElementById('mapSelectedText').textContent = '📍 ' + n;
+        });
+      });
+    }
+    goaMap.setView([lat, lon], 14);
+  }
+
+  function reverseGeocodeThen(lat, lon, callback) {
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16`)
+      .then(r => r.json())
+      .then(data => {
+        const name = (data && data.display_name) ? data.display_name.split(',').slice(0, 3).join(',').trim() : `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        callback(name);
+      })
+      .catch(() => callback(`${lat.toFixed(5)}, ${lon.toFixed(5)}`));
+  }
+
+  function searchGoaPlace() {
+    const q = document.getElementById('mapSearchInput').value.trim();
+    const resultsBox = document.getElementById('mapSearchResults');
+    if (!q) { resultsBox.innerHTML = ''; return; }
+    resultsBox.innerHTML = 'Searching…';
+
+    const viewbox = `${GOA_BOUNDS.left},${GOA_BOUNDS.top},${GOA_BOUNDS.right},${GOA_BOUNDS.bottom}`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q + ', Goa, India')}&viewbox=${viewbox}&bounded=1&countrycodes=in&limit=6`;
+
+    fetch(url)
+      .then(r => r.json())
+      .then(results => {
+        if (!results.length) {
+          resultsBox.innerHTML = '<div style="color:var(--text-dim);">No results found in Goa. Try a different name.</div>';
+          return;
+        }
+        resultsBox.innerHTML = '';
+        results.forEach(res => {
+          const shortName = res.display_name.split(',').slice(0, 3).join(',').trim();
+          const item = document.createElement('div');
+          item.textContent = '📍 ' + shortName;
+          item.style.cssText = 'padding:6px 8px; cursor:pointer; border-radius:6px;';
+          item.onmouseenter = () => item.style.background = 'rgba(255,255,255,0.08)';
+          item.onmouseleave = () => item.style.background = 'transparent';
+          item.onclick = () => {
+            const lat = parseFloat(res.lat), lon = parseFloat(res.lon);
+            handlePointSelected(lat, lon, shortName);
+            resultsBox.innerHTML = '';
+          };
+          resultsBox.appendChild(item);
+        });
+      })
+      .catch(() => {
+        resultsBox.innerHTML = '<div style="color:var(--text-dim);">Search failed. Check your internet connection.</div>';
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('mapSearchInput');
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); searchGoaPlace(); }
+      });
+    }
+  });
+
+  function toggleMapPicker() {
+    const panel = document.getElementById('mapPickerPanel');
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) initGoaMap();
+  }
+
+  function confirmMapLocation() {
+    if (mapMode === 'single') {
+      if (!selectedPlaceName) {
+        alert('Please tap the map, search, or pick a service center first.');
+        return;
+      }
+      document.getElementById('locationInput').value = selectedPlaceName;
+    } else {
+      if (!startPoint || !endPoint) {
+        alert('Please select both a Start and an End point first.');
+        return;
+      }
+      if (calculatedDistanceKm == null) {
+        alert('Still calculating distance, please wait a moment and try again.');
+        return;
+      }
+      document.getElementById('locationInput').value = endPoint.name;
+      document.getElementById('kmInput').value = calculatedDistanceKm.toFixed(1);
+      calcAmount();
+    }
+    document.getElementById('mapPickerPanel').style.display = 'none';
+  }
+</script>
+{% endblock %}
